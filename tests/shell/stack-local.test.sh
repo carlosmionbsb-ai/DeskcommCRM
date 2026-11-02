@@ -6,6 +6,7 @@ set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 INSTALADOR="$ROOT_DIR/ubuntu-local-installer.sh"
+INSTALADOR_MAC="$ROOT_DIR/macos-local-installer.sh"
 STACK="$ROOT_DIR/scripts/local-stack.sh"
 SUPA="$ROOT_DIR/scripts/local-supabase.sh"
 ENVGEN="$ROOT_DIR/scripts/local-env.sh"
@@ -25,7 +26,7 @@ check() {
 
 echo "stack local — instalador e scripts"
 
-for arquivo in "$INSTALADOR" "$STACK" "$SUPA" "$ENVGEN"; do
+for arquivo in "$INSTALADOR" "$INSTALADOR_MAC" "$STACK" "$SUPA" "$ENVGEN"; do
   check "sintaxe Bash válida: ${arquivo#"$ROOT_DIR"/}" bash -n "$arquivo"
 done
 
@@ -41,6 +42,13 @@ check "a senha do dono nasce aleatória" bash -c '
   grep -q "openssl rand" <<<"$(grep "^export OWNER_PASSWORD=" "$1")"' _ "$INSTALADOR"
 check "quem quiser escolher a senha consegue (OWNER_PASSWORD respeitado)" bash -c '
   grep -q "OWNER_PASSWORD:-" "$1"' _ "$INSTALADOR"
+
+check "instalador do Mac: a senha do dono nasce aleatória" bash -c '
+  grep -q "openssl rand" <<<"$(grep "^export OWNER_PASSWORD=" "$1")"' _ "$INSTALADOR_MAC"
+check "gerador de .env.local: no Mac o app só atende a própria máquina" bash -c '
+  grep -q "app_bind=\"127.0.0.1\"" "$1"' _ "$ENVGEN"
+check "compose local: a porta do app respeita APP_BIND" bash -c '
+  grep -qF "\${APP_BIND:-0.0.0.0}:\${APP_PORT:-3000}:3000" "$1"' _ "$COMPOSE"
 
 # ── A chave da API do WAHA ─────────────────────────────────────────────────
 #
