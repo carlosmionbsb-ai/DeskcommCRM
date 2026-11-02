@@ -46,22 +46,40 @@ has_local_env() {
   done
 }
 
+is_macos() { [[ "$(uname -s)" == "Darwin" ]]; }
+
+# `sha512sum` é do GNU; o macOS traz `shasum`. O shim mantém a linha do
+# heredoc igual nos dois sistemas (tests/shell/stack-local.test.sh a executa).
+if ! command -v sha512sum >/dev/null 2>&1; then
+  sha512sum() { shasum -a 512; }
+fi
+
 local_ip() {
   hostname -I 2>/dev/null | awk '{print $1}' || true
 }
 
+port_in_use() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn | awk '{print $4}' | grep -Eq "(^|:)${port}$"
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+  else
+    return 1
+  fi
+}
+
 choose_port() {
   local port="${APP_PORT:-3000}"
-  if command -v ss >/dev/null 2>&1; then
-    while ss -ltn | awk '{print $4}' | grep -Eq "(^|:)${port}$"; do
-      port=$((port + 1))
-    done
-  fi
+  while port_in_use "$port"; do
+    port=$((port + 1))
+  done
   printf '%s' "$port"
 }
 
 generate() {
   local status vm_ip app_port api_url app_url db_url anon_key service_role_key
+  local server_url="" webhook_url app_bind
   status="$(./scripts/local-supabase.sh status)"
   anon_key="$(printf '%s' "$status" | json_value ANON_KEY)"
   service_role_key="$(printf '%s' "$status" | json_value SERVICE_ROLE_KEY)"
@@ -71,18 +89,33 @@ generate() {
     exit 1
   }
 
-  vm_ip="$(local_ip)"
-  [[ -n "$vm_ip" ]] || vm_ip="127.0.0.1"
-  db_url="${db_url/127.0.0.1/$vm_ip}"
   app_port="$(choose_port)"
-  api_url="http://${vm_ip}:54321"
-  app_url="http://${vm_ip}:${app_port}"
+  if is_macos; then
+    # No Mac (Docker Desktop) não há IP de VM: o navegador fala com
+    # `localhost`, e os contêineres alcançam o Mac por `host.docker.internal`.
+    # O app só atende a própria máquina (APP_BIND=127.0.0.1): num consultório,
+    # o Wi-Fi é compartilhado e o CRM guarda conversa de paciente.
+    db_url="${db_url/127.0.0.1/host.docker.internal}"
+    api_url="http://localhost:54321"
+    server_url="http://host.docker.internal:54321"
+    app_url="http://localhost:${app_port}"
+    webhook_url="http://host.docker.internal:${app_port}"
+    app_bind="127.0.0.1"
+  else
+    vm_ip="$(local_ip)"
+    [[ -n "$vm_ip" ]] || vm_ip="127.0.0.1"
+    db_url="${db_url/127.0.0.1/$vm_ip}"
+    api_url="http://${vm_ip}:54321"
+    app_url="http://${vm_ip}:${app_port}"
+    webhook_url="$app_url"
+    app_bind="0.0.0.0"
+  fi
 
   if [[ -f "$ENV_FILE" ]] && [[ "$(env_value DESKCOMM_ENV_MODE)" != "local" ]]; then
     local backup
     backup="${ENV_FILE}.cloud-backup"
     if [[ ! -e "$backup" ]]; then
-      cp --preserve=mode "$ENV_FILE" "$backup"
+      cp -p "$ENV_FILE" "$backup"
       chmod 600 "$backup"
       printf 'Backup do ambiente anterior: %s\n' "$backup"
     fi
@@ -107,10 +140,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=$anon_key
 SUPABASE_SERVICE_ROLE_KEY=$service_role_key
 SUPABASE_DB_URL=$db_url
 SUPABASE_DB_ADMIN_URL=$db_url
+SUPABASE_SERVER_URL=$server_url
 
 NEXT_PUBLIC_APP_URL=$app_url
 NEXT_PUBLIC_ADMIN_URL=$app_url
-WAHA_WEBHOOK_BASE_URL=$app_url
+WAHA_WEBHOOK_BASE_URL=$webhook_url
 
 INTERNAL_SECRET=$(openssl rand -hex 32)
 INTERNAL_CRON_SECRET=$(openssl rand -hex 32)
@@ -131,6 +165,7 @@ UPSTASH_REDIS_REST_TOKEN=deskcomm-local-redis
 SRH_TOKEN=deskcomm-local-redis
 LGPD_SIGNING_KEY=$(openssl rand -hex 32)
 APP_PORT=$app_port
+APP_BIND=$app_bind
 SENTRY_DSN=
 EOF
   mv "$tmp" "$ENV_FILE"

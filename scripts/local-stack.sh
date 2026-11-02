@@ -33,7 +33,12 @@ ensure_encryption_key() {
   fi
   db_url="$(./scripts/local-supabase.sh status | node -e 'let s=""; process.stdin.on("data", c => s += c).on("end", () => process.stdout.write(JSON.parse(s).DB_URL || ""))')"
   [[ -n "$db_url" ]] || { printf 'Erro: Supabase local não retornou DB_URL.\n' >&2; exit 1; }
-  docker run --rm --network host postgres:15-alpine psql "$db_url" -v ON_ERROR_STOP=1 -c \
+  local net=(--network host)
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    db_url="${db_url/127.0.0.1/host.docker.internal}"
+    net=()
+  fi
+  docker run --rm ${net[@]+"${net[@]}"} postgres:15-alpine psql "$db_url" -v ON_ERROR_STOP=1 -c \
     "insert into private.app_secrets (name, value) values ('nuvemshop_oauth_key', '$key') on conflict (name) do update set value = excluded.value, updated_at = now();" \
     >/dev/null
 }

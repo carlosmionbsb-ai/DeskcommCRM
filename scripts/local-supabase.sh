@@ -51,14 +51,21 @@ apply_baseline() {
     printf 'Supabase não retornou DB_URL.\n' >&2
     return 1
   }
-  docker run --rm --network host postgres:15-alpine \
+  # No Mac (Docker Desktop) `--network host` não alcança o 127.0.0.1 do Mac;
+  # `host.docker.internal` alcança.
+  local net=(--network host)
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    db_url="${db_url/127.0.0.1/host.docker.internal}"
+    net=()
+  fi
+  docker run --rm ${net[@]+"${net[@]}"} postgres:15-alpine \
     psql "$db_url" -v ON_ERROR_STOP=1 -c \
     'create extension if not exists "uuid-ossp";
      create extension if not exists pgcrypto;
      create extension if not exists vector;
      create extension if not exists citext;
      create extension if not exists pg_trgm;'
-  docker run --rm --network host \
+  docker run --rm ${net[@]+"${net[@]}"} \
     -v "$ROOT_DIR/supabase/baseline.sql:/tmp/deskcomm-baseline.sql:ro" \
     postgres:15-alpine \
     psql "$db_url" -v ON_ERROR_STOP=1 -f /tmp/deskcomm-baseline.sql

@@ -23,7 +23,9 @@ services:
       # O `worker` abaixo drena o event_log; ver docker-compose.prod.yml.
       EVENT_LOG_WORKER_DRAINS: ${EVENT_LOG_WORKER_DRAINS:-true}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      # APP_BIND vem do .env.local: 127.0.0.1 no Mac (só a própria máquina),
+      # 0.0.0.0 na VM Ubuntu (o host acessa pelo IP da VM).
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-3000}:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

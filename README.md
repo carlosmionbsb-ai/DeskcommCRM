@@ -125,6 +125,12 @@ Caddy que não caberia. Num caso específico — proxy em `--network host`, como
 ele **pergunta em vez de adivinhar**, porque publicar atrás do proxy errado instala "com
 sucesso" um site mudo. Detalhes em [`hostgator-setup-kit/README.md`](hostgator-setup-kit/README.md#vps-que-já-vem-com-proxy-próprio-hostinger-coolify-dokploy).
 
+### Rodar no seu Mac, sem servidor
+
+Tudo local no macOS (Intel ou Apple Silicon), com o CRM atendendo só a própria máquina:
+`bash macos-local-installer.sh`. Passo a passo, lembretes e segurança em
+[`docs/instalar-no-mac.md`](docs/instalar-no-mac.md).
+
 ### Primeiro acesso
 
 Abra `https://<seu-domínio>` (o cadeado leva ~1 min pra aparecer), entre com o admin, e tenha o
